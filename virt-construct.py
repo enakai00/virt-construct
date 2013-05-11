@@ -18,8 +18,7 @@
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
 # 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# This program is distributed in the hope that it will be useful, # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 # 
@@ -125,7 +124,8 @@ def parseArgs():
     parser.add_argument( '-s', '--startvm', action='store_true',
         default=False, help='start vm after installed' )
     parser.add_argument( '-n', '--dryrun', action='store_true',
-        default=False, help='dryrun' )
+        default=False,
+        help='exit after showing ks.cfg and virt-install options' )
     args = parser.parse_args()
     return args 
 
@@ -169,6 +169,7 @@ def waitVmStatus( vmName, status, timeoutSec ):
         count -= 10
     return False
 
+
 def startVm( vmName ):
     conn = libvirt.open( 'qemu:///system' )
     try:
@@ -180,7 +181,6 @@ def startVm( vmName ):
 
 
 if __name__ == '__main__':
-    __debug = 1
 
     ( ksBaseurl, ksDir, virtInstallOpts, ksContentsList, args ) = parseOpts()
 
@@ -192,22 +192,22 @@ if __name__ == '__main__':
         ksFile_url = ksFile.name.replace( ksDir, ksBaseurl )
         virtInstallCmd = ' '.join(
                     ( 'virt-install', virtInstallOpts,
-                      '--noautoconsole', '--noreboot',
+                      '--graphics vnc', '--noautoconsole', '--noreboot',
                       '--extra-args="ks=' + ksFile_url + '"' ) )
-        if __debug:
+        if args.dryrun:
             print "== ks.cfg contents"
             os.system( 'cat ' + ksFile.name )
             print "== virt-install command"
             print virtInstallCmd
-        if not args.dryrun:
+        else:
             os.system( virtInstallCmd )
+            vmNameRe = re.compile( '--name\s+(\S+)' )
+            vmName = vmNameRe.search( virtInstallOpts ).group( 1 )
+            if not waitVmStatus( vmName, 'running', timeoutSec=60 ):
+                sys.exit( "Timeout to start installing vm %s." % vmName )
+            if not waitVmStatus( vmName, 'stopped', timeoutSec=3600 ):
+                sys.exit( "Timeout to finish installing vm %s." % vmName )
+            if args.startvm:
+                if not startVm( vmName ):
+                    sys.exit( "Failed to start vm %s." % vmName )
 
-        vmNameRe = re.compile( '--name\s+(\S+)' )
-        vmName = vmNameRe.search( virtInstallOpts ).group( 1 )
-        if not waitVmStatus( vmName, 'running', timeoutSec=60 ):
-            sys.exit( "Timeout to start installing vm %s." % vmName )
-        if not waitVmStatus( vmName, 'stopped', timeoutSec=3600 ):
-            sys.exit( "Timeout to finish installing vm %s." % vmName )
-        if args.startvm:
-            if not startVm( vmName ):
-                sys.exit( "Failed to start vm %s." % vmName )
